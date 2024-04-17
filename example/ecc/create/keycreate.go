@@ -37,7 +37,11 @@ func main() {
 
 	flag.Parse()
 	// create keyset
+	// outputprefix=RAW
 	privateKeysetHandle, err := keyset.NewHandle(signature.ECDSAP256KeyWithoutPrefixTemplate())
+	// outputprefix=TINK
+	//privateKeysetHandle, err := keyset.NewHandle(signature.ECDSAP256KeyTemplate())
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -155,7 +159,6 @@ func main() {
 		}
 
 		if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
-			//digest := sha256.Sum256(data)
 			pubKey := &ecdsa.PublicKey{
 				Curve: elliptic.P256(),
 				X:     bytesToBigInt(key.X),
@@ -174,6 +177,9 @@ func main() {
 			log.Printf("pubkey: \n%s\n", string(pubkey_pem))
 			if key.Params.HashType == commonpb.HashType_SHA256 {
 				digest := sha256.Sum256(data)
+				// if you want to verify for TINK prefix signature.ECDSAP256KeyTemplate() you need to remove the prefix first
+				// see tinksinger.go
+
 				ok := ecdsa.VerifyASN1(pubKey, digest[:], sig)
 				if !ok {
 					log.Fatalf("Verification failed")

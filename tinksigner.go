@@ -8,6 +8,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"encoding/asn1"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -28,6 +29,22 @@ const (
 
 	ecdsaVerifierTypeURL   = "type.googleapis.com/google.crypto.tink.EcdsaPublicKey"
 	ecdsaPrivateKeyTypeURL = "type.googleapis.com/google.crypto.tink.EcdsaPrivateKey"
+
+	// https://github.com/google/tink/blob/master/go/core/cryptofmt/cryptofmt.go#L68
+	// NonRawPrefixSize is the prefix size of Tink and Legacy key types.
+	NonRawPrefixSize = 5
+
+	// TinkPrefixSize is the prefix size of Tink key types.
+	// The prefix starts with \x01 and followed by a 4-byte key id.
+	TinkPrefixSize = NonRawPrefixSize
+	// TinkStartByte is the first byte of the prefix of Tink key types.
+	TinkStartByte = byte(1)
+
+	// RawPrefixSize is the prefix size of Raw key types.
+	// Raw prefix is empty.
+	RawPrefixSize = 0
+	// RawPrefix is the empty prefix of Raw key types.
+	RawPrefix = ""
 )
 
 type TINKConfig struct {
@@ -61,167 +78,176 @@ func bytesToBigInt(v []byte) *big.Int {
 	return new(big.Int).SetBytes(v)
 }
 
+// https://github.com/google/tink/blob/master/go/core/cryptofmt/cryptofmt.go#L68
+func createOutputPrefix(size int, startByte byte, keyID uint32) string {
+	prefix := make([]byte, size)
+	prefix[0] = startByte
+	binary.BigEndian.PutUint32(prefix[1:], keyID)
+	return string(prefix)
+}
+
 func NewTINKContext(parent context.Context, val *TINKConfig) (context.Context, error) {
 	// first check if a TPM is even involved in the picture here since we can verify w/o a TPM
 	if val.Key == nil {
 		return nil, fmt.Errorf("tinkjwt: tpm device or key not set")
 	}
-
+	// TODO: find a better way to manage the keyset
+	//  for now, only use the primary key
 	for _, k := range val.Key.KeysetInfo().GetKeyInfo() {
-
-		switch k.TypeUrl {
-		case rsaPKCS1PrivateKeyTypeURL:
-
-			publicKeyHandle, err := val.Key.Public()
-			if err != nil {
-				return nil, fmt.Errorf("could not acquire public Keyhandle %v", err)
+		if val.Key.KeysetInfo().PrimaryKeyId == k.KeyId {
+			// look for the primary key in the keyset
+			if k.OutputPrefixType != tinkpb.OutputPrefixType_RAW && k.OutputPrefixType != tinkpb.OutputPrefixType_TINK {
+				return nil, fmt.Errorf("outputPrefix type must be either RAW or TINK; got %v", k.OutputPrefixType)
 			}
-			bbw := new(bytes.Buffer)
-			bw := keyset.NewBinaryWriter(bbw)
-			err = publicKeyHandle.WriteWithNoSecrets(bw)
-			if err != nil {
-				return nil, fmt.Errorf("could not write encrypted keyhandle %v", err)
-			}
+			switch k.TypeUrl {
+			case rsaPKCS1PrivateKeyTypeURL:
 
-			tpb := &tinkpb.Keyset{}
-
-			err = proto.Unmarshal(bbw.Bytes(), tpb)
-			if err != nil {
-				return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
-			}
-
-			for _, kk := range tpb.Key {
-				kserialized := kk.KeyData.Value
-
-				key := &rsppb.RsaSsaPkcs1PublicKey{}
-				if err := proto.Unmarshal(kserialized, key); err != nil {
-					return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+				publicKeyHandle, err := val.Key.Public()
+				if err != nil {
+					return nil, fmt.Errorf("could not acquire public Keyhandle %v", err)
+				}
+				bbw := new(bytes.Buffer)
+				bw := keyset.NewBinaryWriter(bbw)
+				err = publicKeyHandle.WriteWithNoSecrets(bw)
+				if err != nil {
+					return nil, fmt.Errorf("could not write encrypted keyhandle %v", err)
 				}
 
-				pubKey := &rsa.PublicKey{
-					E: int(bytesToBigInt(key.GetE()).Int64()),
-					N: bytesToBigInt(key.GetN()),
-				}
-				val.publicKeyFromTINK = pubKey
-			}
+				tpb := &tinkpb.Keyset{}
 
-		case rsaSSAPKCS1VerifierTypeURL:
-
-			bbw := new(bytes.Buffer)
-			bw := keyset.NewBinaryWriter(bbw)
-			err := val.Key.WriteWithNoSecrets(bw)
-			if err != nil {
-				return nil, fmt.Errorf("Could not write encrypted keyhandle %v", err)
-			}
-
-			tpb := &tinkpb.Keyset{}
-
-			err = proto.Unmarshal(bbw.Bytes(), tpb)
-			if err != nil {
-				return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
-			}
-
-			for _, kk := range tpb.Key {
-				kserialized := kk.KeyData.Value
-
-				key := &rsppb.RsaSsaPkcs1PublicKey{}
-				if err := proto.Unmarshal(kserialized, key); err != nil {
-					return nil, fmt.Errorf("Could not write unmarshall publicKey %v", err)
+				err = proto.Unmarshal(bbw.Bytes(), tpb)
+				if err != nil {
+					return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
 				}
 
-				pubKey := &rsa.PublicKey{
-					E: int(bytesToBigInt(key.GetE()).Int64()),
-					N: bytesToBigInt(key.GetN()),
-				}
-				val.publicKeyFromTINK = pubKey
-			}
+				for _, kk := range tpb.Key {
+					kserialized := kk.KeyData.Value
 
-		case ecdsaPrivateKeyTypeURL:
+					key := &rsppb.RsaSsaPkcs1PublicKey{}
+					if err := proto.Unmarshal(kserialized, key); err != nil {
+						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+					}
 
-			publicKeyHandle, err := val.Key.Public()
-			if err != nil {
-				return nil, fmt.Errorf("could not acquire public Keyhandle %v", err)
-			}
-			bbw := new(bytes.Buffer)
-			bw := keyset.NewBinaryWriter(bbw)
-			err = publicKeyHandle.WriteWithNoSecrets(bw)
-			if err != nil {
-				return nil, fmt.Errorf("could not write encrypted keyhandle %v", err)
-			}
-
-			tpb := &tinkpb.Keyset{}
-
-			err = proto.Unmarshal(bbw.Bytes(), tpb)
-			if err != nil {
-				return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
-			}
-
-			for _, kk := range tpb.Key {
-				kserialized := kk.KeyData.Value
-
-				key := &ecdsapb.EcdsaPublicKey{}
-				if err := proto.Unmarshal(kserialized, key); err != nil {
-					return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
-				}
-
-				if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
-					//digest := sha256.Sum256(data)
-					pubKey := &ecdsa.PublicKey{
-						Curve: elliptic.P256(),
-						X:     bytesToBigInt(key.X),
-						Y:     bytesToBigInt(key.Y),
+					pubKey := &rsa.PublicKey{
+						E: int(bytesToBigInt(key.GetE()).Int64()),
+						N: bytesToBigInt(key.GetN()),
 					}
 					val.publicKeyFromTINK = pubKey
-				} else {
-					return nil, fmt.Errorf("unsupported keytype %v", err)
-				}
-			}
-
-		case ecdsaVerifierTypeURL:
-
-			bbw := new(bytes.Buffer)
-			bw := keyset.NewBinaryWriter(bbw)
-			err := val.Key.WriteWithNoSecrets(bw)
-			if err != nil {
-				return nil, fmt.Errorf("could not write encrypted keyhandle %v", err)
-			}
-
-			tpb := &tinkpb.Keyset{}
-
-			err = proto.Unmarshal(bbw.Bytes(), tpb)
-			if err != nil {
-				return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
-			}
-
-			for _, kk := range tpb.Key {
-				kserialized := kk.KeyData.Value
-
-				key := &ecdsapb.EcdsaPublicKey{}
-				if err := proto.Unmarshal(kserialized, key); err != nil {
-					return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
 				}
 
-				if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
-					//digest := sha256.Sum256(data)
-					pubKey := &ecdsa.PublicKey{
-						Curve: elliptic.P256(),
-						X:     bytesToBigInt(key.X),
-						Y:     bytesToBigInt(key.Y),
+			case rsaSSAPKCS1VerifierTypeURL:
+
+				bbw := new(bytes.Buffer)
+				bw := keyset.NewBinaryWriter(bbw)
+				err := val.Key.WriteWithNoSecrets(bw)
+				if err != nil {
+					return nil, fmt.Errorf("could not write encrypted keyhandle %v", err)
+				}
+
+				tpb := &tinkpb.Keyset{}
+
+				err = proto.Unmarshal(bbw.Bytes(), tpb)
+				if err != nil {
+					return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
+				}
+
+				for _, kk := range tpb.Key {
+					kserialized := kk.KeyData.Value
+
+					key := &rsppb.RsaSsaPkcs1PublicKey{}
+					if err := proto.Unmarshal(kserialized, key); err != nil {
+						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+					}
+
+					pubKey := &rsa.PublicKey{
+						E: int(bytesToBigInt(key.GetE()).Int64()),
+						N: bytesToBigInt(key.GetN()),
 					}
 					val.publicKeyFromTINK = pubKey
-				} else {
-					return nil, fmt.Errorf("unsupported keytype %v", err)
 				}
 
-			}
+			case ecdsaPrivateKeyTypeURL:
 
-		default:
-			return nil, fmt.Errorf("tinkjwt: error extracting publcic key %s", k.TypeUrl)
+				publicKeyHandle, err := val.Key.Public()
+				if err != nil {
+					return nil, fmt.Errorf("could not acquire public Keyhandle %v", err)
+				}
+				bbw := new(bytes.Buffer)
+				bw := keyset.NewBinaryWriter(bbw)
+				err = publicKeyHandle.WriteWithNoSecrets(bw)
+				if err != nil {
+					return nil, fmt.Errorf("could not write encrypted keyhandle %v", err)
+				}
+
+				tpb := &tinkpb.Keyset{}
+
+				err = proto.Unmarshal(bbw.Bytes(), tpb)
+				if err != nil {
+					return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
+				}
+
+				for _, kk := range tpb.Key {
+					kserialized := kk.KeyData.Value
+
+					key := &ecdsapb.EcdsaPublicKey{}
+					if err := proto.Unmarshal(kserialized, key); err != nil {
+						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+					}
+
+					if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
+						pubKey := &ecdsa.PublicKey{
+							Curve: elliptic.P256(),
+							X:     bytesToBigInt(key.X),
+							Y:     bytesToBigInt(key.Y),
+						}
+						val.publicKeyFromTINK = pubKey
+					} else {
+						return nil, fmt.Errorf("unsupported keytype %v", err)
+					}
+				}
+
+			case ecdsaVerifierTypeURL:
+
+				bbw := new(bytes.Buffer)
+				bw := keyset.NewBinaryWriter(bbw)
+				err := val.Key.WriteWithNoSecrets(bw)
+				if err != nil {
+					return nil, fmt.Errorf("could not write encrypted keyhandle %v", err)
+				}
+
+				tpb := &tinkpb.Keyset{}
+
+				err = proto.Unmarshal(bbw.Bytes(), tpb)
+				if err != nil {
+					return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
+				}
+
+				for _, kk := range tpb.Key {
+					kserialized := kk.KeyData.Value
+
+					key := &ecdsapb.EcdsaPublicKey{}
+					if err := proto.Unmarshal(kserialized, key); err != nil {
+						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+					}
+
+					if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
+						pubKey := &ecdsa.PublicKey{
+							Curve: elliptic.P256(),
+							X:     bytesToBigInt(key.X),
+							Y:     bytesToBigInt(key.Y),
+						}
+						val.publicKeyFromTINK = pubKey
+					} else {
+						return nil, fmt.Errorf("unsupported keytype %v", err)
+					}
+				}
+			default:
+				return nil, fmt.Errorf("tinkjwt: error extracting publcic key %s", k.TypeUrl)
+			}
+			return context.WithValue(parent, tinkConfigKey{}, val), nil
 		}
-
 	}
-
-	return context.WithValue(parent, tinkConfigKey{}, val), nil
+	return nil, fmt.Errorf("tinkjwt: primary keyID in keyset not found")
 }
 
 func TINKFromContext(ctx context.Context) (*TINKConfig, bool) {
@@ -293,60 +319,68 @@ func (s *SigningMethodTINK) Sign(signingString string, key interface{}) ([]byte,
 	}
 
 	for _, k := range config.Key.KeysetInfo().GetKeyInfo() {
+		if config.Key.KeysetInfo().PrimaryKeyId == k.KeyId {
 
-		switch k.TypeUrl {
-		case rsaPKCS1PrivateKeyTypeURL:
-			return ss, err
-		case ecdsaPrivateKeyTypeURL:
-			publicKeyHandle, err := config.Key.Public()
-			if err != nil {
-				return nil, fmt.Errorf("could not acquire public Keyhandle %v", err)
-			}
-			bbw := new(bytes.Buffer)
-			bw := keyset.NewBinaryWriter(bbw)
-			err = publicKeyHandle.WriteWithNoSecrets(bw)
-			if err != nil {
-				return nil, fmt.Errorf("could not write encrypted keyhandle %v", err)
+			// remove the TINK Prefix
+			if k.OutputPrefixType == tinkpb.OutputPrefixType_TINK {
+				pf := createOutputPrefix(TinkPrefixSize, TinkStartByte, config.Key.KeysetInfo().PrimaryKeyId)
+				ss = ss[len(pf):]
 			}
 
-			tpb := &tinkpb.Keyset{}
-
-			err = proto.Unmarshal(bbw.Bytes(), tpb)
-			if err != nil {
-				return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
-			}
-
-			for _, kk := range tpb.Key {
-				kserialized := kk.KeyData.Value
-
-				key := &ecdsapb.EcdsaPublicKey{}
-				if err := proto.Unmarshal(kserialized, key); err != nil {
-					return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+			switch k.TypeUrl {
+			case rsaPKCS1PrivateKeyTypeURL:
+				return ss, err
+			case ecdsaPrivateKeyTypeURL:
+				publicKeyHandle, err := config.Key.Public()
+				if err != nil {
+					return nil, fmt.Errorf("could not acquire public Keyhandle %v", err)
+				}
+				bbw := new(bytes.Buffer)
+				bw := keyset.NewBinaryWriter(bbw)
+				err = publicKeyHandle.WriteWithNoSecrets(bw)
+				if err != nil {
+					return nil, fmt.Errorf("could not write encrypted keyhandle %v", err)
 				}
 
-				if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
-					curveBits := elliptic.P256().Params().BitSize
-					keyBytes := curveBits / 8
-					if curveBits%8 > 0 {
-						keyBytes += 1
-					}
-					out := make([]byte, 2*keyBytes)
-					var sigStruct struct{ R, S *big.Int }
-					_, err = asn1.Unmarshal(ss, &sigStruct)
-					if err != nil {
-						return nil, fmt.Errorf("tinkjwt: can't unmarshall ecc struct %v", err)
-					}
-					sigStruct.R.FillBytes(out[0:keyBytes])
-					sigStruct.S.FillBytes(out[keyBytes:])
-					return out, nil
-				} else {
-					return nil, fmt.Errorf("unsupported keytype %v", err)
-				}
-			}
+				tpb := &tinkpb.Keyset{}
 
-		default:
-			return nil, fmt.Errorf("tinkjwt: error extracting publcic key %s", k.TypeUrl)
+				err = proto.Unmarshal(bbw.Bytes(), tpb)
+				if err != nil {
+					return nil, fmt.Errorf("could not unmarshall keyhandle %v", err)
+				}
+
+				for _, kk := range tpb.Key {
+					kserialized := kk.KeyData.Value
+
+					key := &ecdsapb.EcdsaPublicKey{}
+					if err := proto.Unmarshal(kserialized, key); err != nil {
+						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+					}
+
+					if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
+						curveBits := elliptic.P256().Params().BitSize
+						keyBytes := curveBits / 8
+						if curveBits%8 > 0 {
+							keyBytes += 1
+						}
+						out := make([]byte, 2*keyBytes)
+						var sigStruct struct{ R, S *big.Int }
+						_, err = asn1.Unmarshal(ss, &sigStruct)
+						if err != nil {
+							return nil, fmt.Errorf("tinkjwt: can't unmarshall ecc struct %v", err)
+						}
+						sigStruct.R.FillBytes(out[0:keyBytes])
+						sigStruct.S.FillBytes(out[keyBytes:])
+						return out, nil
+					} else {
+						return nil, fmt.Errorf("unsupported keytype %v", err)
+					}
+				}
+			default:
+				return nil, fmt.Errorf("tinkjwt: error extracting publcic key %s", k.TypeUrl)
+			}
 		}
+
 	}
 	return ss, err
 }

@@ -17,15 +17,21 @@ The following types are supported
 
 ### Supported TINK Key Types:
 
-The Tink Key you use for signing *must* use the RAW prefix mode (`"outputPrefixType": "RAW"`) because of cross compatibility with arbitrary verifiers.  
+Currently only the PrimaryK KeyID is used for signing and verification.
 
-In other words, if you use this library to issue a JWT, the signature attached to the JWT must not have the TINK prefix attached.  This allows any other JWT library or system to easily verify the signature.   
+The Tink Key you use for signing should use the TINK or RAW prefix mode (`"outputPrefixType": "RAW"`, `"outputPrefixType": "TINK"`) as shown in the example.
 
 The example in this repo uses the following templates:
 
 * `signature.RSA_SSA_PKCS1_3072_SHA256_F4_RAW_Key_Template()`
 * `signature.ECDSAP256KeyWithoutPrefixTemplate()`
 
+but you can also use
+
+  * `signature.RSA_SSA_PKCS1_3072_SHA256_F4_Key_Template()`
+  * `signature.ECDSAP256KeyTemplate()`
+
+for EC keys, only DER output format  (`EcdsaSignatureEncoding_DER`) is supported though a TODO is to also support `signature.ECDSAP256RawKeyTemplate()` 
 
 Additional JWT signing library:
 

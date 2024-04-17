@@ -37,7 +37,10 @@ func main() {
 
 	flag.Parse()
 	// create keyset
+	// OutputPrefix_RAW
 	privateKeysetHandle, err := keyset.NewHandle(signature.RSA_SSA_PKCS1_3072_SHA256_F4_RAW_Key_Template())
+	// OutputPrefix_TINK
+	//privateKeysetHandle, err := keyset.NewHandle(signature.RSA_SSA_PKCS1_3072_SHA256_F4_Key_Template())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -170,6 +173,11 @@ func main() {
 			},
 		)
 		log.Printf("pubkey: \n%s\n", string(pubkey_pem))
+
+		// if outputprefix=RAW, verify the signature directly
+		// if outputprefix=TINK, you have to remove the prefix value (see tinksigner.go)
+		//  	pf := createOutputPrefix(TinkPrefixSize, TinkStartByte,tpb.PrimaryKeyId)
+		//		sig = sig[len(pf):]
 		if key.Params.HashType == commonpb.HashType_SHA256 {
 			digest := sha256.Sum256(data)
 			verifyErr := rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, digest[:], sig)
