@@ -17,7 +17,7 @@ The following types are supported
 
 ### Supported TINK Key Types:
 
-Currently only the PrimaryK KeyID is used for signing and verification.
+Currently only the PrimaryKeyID is used for signing and verification.
 
 The Tink Key you use for signing should use the TINK or RAW prefix mode (`"outputPrefixType": "RAW"`, `"outputPrefixType": "TINK"`) as shown in the example.
 
@@ -74,6 +74,7 @@ token := jwt.NewWithClaims(tinkjwt.SigningMethodTINKRS256, claims)
 config := &tinkjwt.TINKConfig{
 	Key: privateKeyHandle,
 }
+keyctx, err := tinkjwt.NewTINKContext(ctx, config)
 
 // sign
 tokenString, err := token.SignedString(keyctx)
@@ -88,17 +89,17 @@ To verify, you can just use the Public Key
 publicKeyReader := keyset.NewJSONReader(bytes.NewReader(pubKBytes))
 publicKeyHandle, err := insecurecleartextkeyset.Read(publicKeyReader)
 
-configP := &tinkjwt.TINKConfig{
+config := &tinkjwt.TINKConfig{
 	Key: publicKeyHandle,
 }
 
-keyctxP, err := tinkjwt.NewTINKContext(ctx, configP)
+keyctx, err := tinkjwt.NewTINKContext(ctx, config)
 
 // verify with TINK based publicKey
-keyFuncP, err := tinkjwt.TINKVerfiyKeyfunc(keyctxP, configP)
+keyFunc, err := tinkjwt.TINKVerfiyKeyfunc(keyctx, config)
 
-vtokenP, err := jwt.Parse(tokenString, keyFuncP)
-if vtokenP.Valid {
+tokenP, err := jwt.Parse(tokenString, keyFunc)
+if tokenP.Valid {
 	log.Println("     verified with TINK PublicKey")
 }
 ```

@@ -121,18 +121,20 @@ func NewTINKContext(parent context.Context, val *TINKConfig) (context.Context, e
 				}
 
 				for _, kk := range tpb.Key {
-					kserialized := kk.KeyData.Value
+					if kk.KeyId == val.Key.KeysetInfo().PrimaryKeyId {
+						kserialized := kk.KeyData.Value
 
-					key := &rsppb.RsaSsaPkcs1PublicKey{}
-					if err := proto.Unmarshal(kserialized, key); err != nil {
-						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
-					}
+						key := &rsppb.RsaSsaPkcs1PublicKey{}
+						if err := proto.Unmarshal(kserialized, key); err != nil {
+							return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+						}
 
-					pubKey := &rsa.PublicKey{
-						E: int(bytesToBigInt(key.GetE()).Int64()),
-						N: bytesToBigInt(key.GetN()),
+						pubKey := &rsa.PublicKey{
+							E: int(bytesToBigInt(key.GetE()).Int64()),
+							N: bytesToBigInt(key.GetN()),
+						}
+						val.publicKeyFromTINK = pubKey
 					}
-					val.publicKeyFromTINK = pubKey
 				}
 
 			case rsaSSAPKCS1VerifierTypeURL:
@@ -152,18 +154,20 @@ func NewTINKContext(parent context.Context, val *TINKConfig) (context.Context, e
 				}
 
 				for _, kk := range tpb.Key {
-					kserialized := kk.KeyData.Value
+					if kk.KeyId == val.Key.KeysetInfo().PrimaryKeyId {
+						kserialized := kk.KeyData.Value
 
-					key := &rsppb.RsaSsaPkcs1PublicKey{}
-					if err := proto.Unmarshal(kserialized, key); err != nil {
-						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
-					}
+						key := &rsppb.RsaSsaPkcs1PublicKey{}
+						if err := proto.Unmarshal(kserialized, key); err != nil {
+							return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+						}
 
-					pubKey := &rsa.PublicKey{
-						E: int(bytesToBigInt(key.GetE()).Int64()),
-						N: bytesToBigInt(key.GetN()),
+						pubKey := &rsa.PublicKey{
+							E: int(bytesToBigInt(key.GetE()).Int64()),
+							N: bytesToBigInt(key.GetN()),
+						}
+						val.publicKeyFromTINK = pubKey
 					}
-					val.publicKeyFromTINK = pubKey
 				}
 
 			case ecdsaPrivateKeyTypeURL:
@@ -187,20 +191,22 @@ func NewTINKContext(parent context.Context, val *TINKConfig) (context.Context, e
 				}
 
 				for _, kk := range tpb.Key {
-					kserialized := kk.KeyData.Value
+					if kk.KeyId == val.Key.KeysetInfo().PrimaryKeyId {
+						kserialized := kk.KeyData.Value
 
-					key := &ecdsapb.EcdsaPublicKey{}
-					if err := proto.Unmarshal(kserialized, key); err != nil {
-						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
-					}
-
-					if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
-						pubKey := &ecdsa.PublicKey{
-							Curve: elliptic.P256(),
-							X:     bytesToBigInt(key.X),
-							Y:     bytesToBigInt(key.Y),
+						key := &ecdsapb.EcdsaPublicKey{}
+						if err := proto.Unmarshal(kserialized, key); err != nil {
+							return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
 						}
-						val.publicKeyFromTINK = pubKey
+
+						if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
+							pubKey := &ecdsa.PublicKey{
+								Curve: elliptic.P256(),
+								X:     bytesToBigInt(key.X),
+								Y:     bytesToBigInt(key.Y),
+							}
+							val.publicKeyFromTINK = pubKey
+						}
 					} else {
 						return nil, fmt.Errorf("unsupported keytype %v", err)
 					}
@@ -223,26 +229,28 @@ func NewTINKContext(parent context.Context, val *TINKConfig) (context.Context, e
 				}
 
 				for _, kk := range tpb.Key {
-					kserialized := kk.KeyData.Value
+					if kk.KeyId == val.Key.KeysetInfo().PrimaryKeyId {
+						kserialized := kk.KeyData.Value
 
-					key := &ecdsapb.EcdsaPublicKey{}
-					if err := proto.Unmarshal(kserialized, key); err != nil {
-						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
-					}
-
-					if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
-						pubKey := &ecdsa.PublicKey{
-							Curve: elliptic.P256(),
-							X:     bytesToBigInt(key.X),
-							Y:     bytesToBigInt(key.Y),
+						key := &ecdsapb.EcdsaPublicKey{}
+						if err := proto.Unmarshal(kserialized, key); err != nil {
+							return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
 						}
-						val.publicKeyFromTINK = pubKey
-					} else {
-						return nil, fmt.Errorf("unsupported keytype %v", err)
+
+						if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
+							pubKey := &ecdsa.PublicKey{
+								Curve: elliptic.P256(),
+								X:     bytesToBigInt(key.X),
+								Y:     bytesToBigInt(key.Y),
+							}
+							val.publicKeyFromTINK = pubKey
+						} else {
+							return nil, fmt.Errorf("unsupported keytype %v", err)
+						}
 					}
 				}
 			default:
-				return nil, fmt.Errorf("tinkjwt: error extracting publcic key %s", k.TypeUrl)
+				return nil, fmt.Errorf("tinkjwt: error extracting public key %s", k.TypeUrl)
 			}
 			return context.WithValue(parent, tinkConfigKey{}, val), nil
 		}
