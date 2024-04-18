@@ -200,7 +200,9 @@ $ go run ecc/main.go  --privK keyset/ecc_1_privatekey_keyset.json --pubK=keyset/
 		2024/04/18 13:42:03      verified with TINK PublicKey
 		2024/04/18 13:42:03      verified with exported PubicKey
 		2024/04/18 13:42:03      verified with TINK PublicKey
-		srashid@srashid12:~/Desktop/golang-jwt-tink/example$ go run ecc/main.go  --privK keyset/ecc_1_privatekey_keyset.json --pubK=keyset/ecc_1_public_keyset.json 
+
+$ go run ecc/main.go  --privK keyset/ecc_1_privatekey_keyset.json --pubK=keyset/ecc_1_public_keyset.json 
+
 		2024/04/18 13:42:19 ======= Init  ========
 		2024/04/18 13:42:19 ECC PublicKey: 
 		-----BEGIN PUBLIC KEY-----
