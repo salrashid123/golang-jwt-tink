@@ -364,7 +364,9 @@ func (s *SigningMethodTINK) Sign(signingString string, key interface{}) ([]byte,
 					if err := proto.Unmarshal(kserialized, key); err != nil {
 						return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
 					}
-
+					if key.Params.Encoding == ecdsapb.EcdsaSignatureEncoding_IEEE_P1363 {
+						return ss, nil
+					}
 					if key.Params.GetCurve() == commonpb.EllipticCurveType_NIST_P256 {
 						curveBits := elliptic.P256().Params().BitSize
 						keyBytes := curveBits / 8

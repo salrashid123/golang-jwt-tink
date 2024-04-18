@@ -294,4 +294,8 @@ key_info {
 
 $ tinkey create-keyset --key-template=ECDSA_P256 --out-format=json --out=keyset/ecc_1_privatekey_keyset.json
 $ tinkey create-public-keyset --in=keyset/ecc_1_privatekey_keyset.json --out-format=json --out=keyset/ecc_1_public_keyset.json
+
+$ tinkey create-keyset --key-template=ECDSA_P256_IEEE_P1363_WITHOUT_PREFIX --out-format=json --out=keyset/ecc_2_privatekey_keyset.json
+$ tinkey create-public-keyset --in=keyset/ecc_2_privatekey_keyset.json --out-format=json --out=keyset/ecc_2_public_keyset.json
+
 ```
