@@ -21,6 +21,7 @@ import (
 var (
 	pubK  = flag.String("pubK", "pub.json", "Tink PublicKey")
 	privK = flag.String("privK", "priv.json", "Tink PrivateKey")
+	keyID = flag.Uint("keyID", 0, "Tink PrivateKey")
 )
 
 func main() {
@@ -41,13 +42,16 @@ func main() {
 		log.Fatal(err)
 	}
 
+	prMgr := keyset.NewManagerFromHandle(privateKeyHandle)
+	prMgr.SetPrimary(uint32(*keyID))
+
 	claims := &jwt.RegisteredClaims{
 		ExpiresAt: &jwt.NumericDate{time.Now().Add(time.Minute * 1)},
 		Issuer:    "test",
 	}
 
-	tinkjwt.SigningMethodTINKES256.Override()
-	token := jwt.NewWithClaims(tinkjwt.SigningMethodTINKES256, claims)
+	tinkjwt.SigningMethodTINKRS256.Override()
+	token := jwt.NewWithClaims(tinkjwt.SigningMethodTINKRS256, claims)
 
 	config := &tinkjwt.TINKConfig{
 		Key: privateKeyHandle,
@@ -62,7 +66,6 @@ func main() {
 	if !ok {
 		log.Fatalf("Unable to initialize tinkJWT: %v", err)
 	}
-	c.GetPublicKey()
 
 	pubkey_bytes, err := x509.MarshalPKIXPublicKey(c.GetPublicKey())
 	if err != nil {
@@ -70,11 +73,11 @@ func main() {
 	}
 	pubkey_pem := pem.EncodeToMemory(
 		&pem.Block{
-			Type:  "PUBLIC KEY",
+			Type:  "RSA PUBLIC KEY",
 			Bytes: pubkey_bytes,
 		},
 	)
-	log.Printf("ECC PublicKey: \n%s\n", string(pubkey_pem))
+	log.Printf("RSA PublicKey: \n%s\n", string(pubkey_pem))
 
 	// optionally set a keyID
 	//token.Header["kid"] = config.GetKeyID()
@@ -123,6 +126,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	puMgr := keyset.NewManagerFromHandle(publicKeyHandle)
+	puMgr.SetPrimary(uint32(*keyID))
 
 	configP := &tinkjwt.TINKConfig{
 		Key: publicKeyHandle,

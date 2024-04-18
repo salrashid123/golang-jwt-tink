@@ -21,6 +21,7 @@ import (
 var (
 	pubK  = flag.String("pubK", "pub.json", "Tink PublicKey")
 	privK = flag.String("privK", "priv.json", "Tink PrivateKey")
+	keyID = flag.Uint("keyID", 0, "Tink PrivateKey")
 )
 
 func main() {
@@ -41,13 +42,16 @@ func main() {
 		log.Fatal(err)
 	}
 
+	prMgr := keyset.NewManagerFromHandle(privateKeyHandle)
+	prMgr.SetPrimary(uint32(*keyID))
+
 	claims := &jwt.RegisteredClaims{
 		ExpiresAt: &jwt.NumericDate{time.Now().Add(time.Minute * 1)},
 		Issuer:    "test",
 	}
 
-	tinkjwt.SigningMethodTINKRS256.Override()
-	token := jwt.NewWithClaims(tinkjwt.SigningMethodTINKRS256, claims)
+	tinkjwt.SigningMethodTINKES256.Override()
+	token := jwt.NewWithClaims(tinkjwt.SigningMethodTINKES256, claims)
 
 	config := &tinkjwt.TINKConfig{
 		Key: privateKeyHandle,
@@ -70,11 +74,11 @@ func main() {
 	}
 	pubkey_pem := pem.EncodeToMemory(
 		&pem.Block{
-			Type:  "RSA PUBLIC KEY",
+			Type:  "PUBLIC KEY",
 			Bytes: pubkey_bytes,
 		},
 	)
-	log.Printf("RSA PublicKey: \n%s\n", string(pubkey_pem))
+	log.Printf("ECC PublicKey: \n%s\n", string(pubkey_pem))
 
 	// optionally set a keyID
 	//token.Header["kid"] = config.GetKeyID()
@@ -123,6 +127,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	puMgr := keyset.NewManagerFromHandle(privateKeyHandle)
+	puMgr.SetPrimary(uint32(*keyID))
 
 	configP := &tinkjwt.TINKConfig{
 		Key: publicKeyHandle,
