@@ -179,28 +179,6 @@ $ go run rsa/main.go --keyID=2174348416 --privK keyset/rsa_2_privatekey_keyset.j
 Sign and verify
 
 ```bash
-## sign with primary key
-$ go run ecc/main.go  --privK keyset/ecc_1_privatekey_keyset.json --pubK=keyset/ecc_1_public_keyset.json 
-
-		2024/04/18 13:42:03 ======= Init  ========
-		2024/04/18 13:42:03 RSA PublicKey: 
-		-----BEGIN RSA PUBLIC KEY-----
-		MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA2du3+AUj75Sfd0GR/faj
-		jacdCEsSqYphLbqDQwknwZLzp44cy4D5s3Mt/2QHHIXcvts9DRYVJOpGctg5VDwJ
-		7sBNAPZ9h6J4QW6X5lV7TMa1T+jJwlCg56MCQqxayP+EgOCwk4rV8ZPZH/l0a5nV
-		eDZZ3mtrlnxGJ5WCnvjMuT8PxJ4SsDFbPzByphDUMGB4Idieka/arQ9p8efbADO4
-		6bQUyv97UW7t8pqb49RnX2b2Xl3878UdulIPymsrr4t05rahh8a7daEB6YLK0tF/
-		tTvuK0SYMVZMyLb9VsipeGBePRsMvUKt8f9rwhLmQImAcuDYwfkiGAO9bA/VjxNA
-		Z/8klBTw6XdL6uR/RrbCXUYeOPvL4XposPHgNu5EDMF4aga5e7jops6iB9O5Ih3h
-		cQd+OETUFsLC7J4QXIeunV5LSOPw33BkgqNxVeFNQeNujPAUSCmO7PmwgVfx75TT
-		FQMWdLcJgga/G11hOoKT+zuyF1cVClurqxfFKYUlmKBHAgMBAAE=
-		-----END RSA PUBLIC KEY-----
-
-		TOKEN: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ0ZXN0IiwiZXhwIjoxNzEzNDYyMTgzfQ.EBF7poLm2gYL2jCmwIZ-mNZPI836bIHb7xbBJKzZMfFratV9SFOgxeKlCbSNfp-g8vr3BTafuX5-ZljOqtuBorn5woCTkKQFhBMhThDfQDmq1Mm535aD5pgUcvztow_ymf2ZWRTx8He55IzxDPvGiRR_1nhdzwxj5QVisdor89hR8vNhMMx6NQjeBL0AQgLbMNE7JJj6PSPFjMreb-5RzDyF69UzotnyrI9XInqWiyb2VgFwNjbibZ9dyvdpDkLfDvtolZ73of8ZqZG1f6mSBg4HX2dgEpn4typv_F58trXrWyeMdbKvgRFEYSWsEvtj3H20Ze4KVcT8p-qlHQFGYX9apZiCYrYa3WX03t2OkIXavnA6ozM6eo7Thf6wV5Ab649PZA2l-RVHN_NjfOwd-DXb_zi_zIV7az6GVK2wSpUsz4W82_VZIAEPASMxvVPn7hOPZV9FEOHNEiA80FzzA34YbpWYaOaSkyWXG5yIsaIPh8L_ybfzA7JrlwE0AjLr
-		2024/04/18 13:42:03      verified with TINK PublicKey
-		2024/04/18 13:42:03      verified with exported PubicKey
-		2024/04/18 13:42:03      verified with TINK PublicKey
-
 $ go run ecc/main.go  --privK keyset/ecc_1_privatekey_keyset.json --pubK=keyset/ecc_1_public_keyset.json 
 
 		2024/04/18 13:42:19 ======= Init  ========
