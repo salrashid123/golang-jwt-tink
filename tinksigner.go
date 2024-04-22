@@ -18,6 +18,7 @@ import (
 	commonpb "github.com/tink-crypto/tink-go/v2/proto/common_go_proto"
 	ecdsapb "github.com/tink-crypto/tink-go/v2/proto/ecdsa_go_proto"
 	rsppb "github.com/tink-crypto/tink-go/v2/proto/rsa_ssa_pkcs1_go_proto"
+	rspsspb "github.com/tink-crypto/tink-go/v2/proto/rsa_ssa_pss_go_proto"
 	tinkpb "github.com/tink-crypto/tink-go/v2/proto/tink_go_proto"
 	"github.com/tink-crypto/tink-go/v2/signature"
 	"google.golang.org/protobuf/proto"
@@ -26,6 +27,9 @@ import (
 const (
 	rsaPKCS1PrivateKeyTypeURL  = "type.googleapis.com/google.crypto.tink.RsaSsaPkcs1PrivateKey"
 	rsaSSAPKCS1VerifierTypeURL = "type.googleapis.com/google.crypto.tink.RsaSsaPkcs1PublicKey"
+
+	rsaPSSPrivateKeyTypeURL    = "type.googleapis.com/google.crypto.tink.RsaSsaPssPrivateKey"
+	rsaPSSPKCS1VerifierTypeURL = "type.googleapis.com/google.crypto.tink.RsaSsaPssPublicKey"
 
 	ecdsaVerifierTypeURL   = "type.googleapis.com/google.crypto.tink.EcdsaPublicKey"
 	ecdsaPrivateKeyTypeURL = "type.googleapis.com/google.crypto.tink.EcdsaPrivateKey"
@@ -49,13 +53,14 @@ const (
 
 type TINKConfig struct {
 	Key               *keyset.Handle
+	KeyID             string           // (optional) the keyID (eg, specify the 'kid' parameter; if not set, use the TINK primary keyID)
 	publicKeyFromTINK crypto.PublicKey // the public key as read from KeyHandleFile, KeyHandleNV
 }
 
 type tinkConfigKey struct{}
 
 func (k *TINKConfig) GetKeyID() string {
-	return k.GetKeyID()
+	return k.KeyID
 }
 
 func (k *TINKConfig) GetPublicKey() crypto.PublicKey {
@@ -64,6 +69,7 @@ func (k *TINKConfig) GetPublicKey() crypto.PublicKey {
 
 var (
 	SigningMethodTINKRS256 *SigningMethodTINK
+	SigningMethodTINKPS256 *SigningMethodTINK
 	SigningMethodTINKES256 *SigningMethodTINK
 	errMissingConfig       = errors.New("tinkjwt: missing configuration in provided context")
 )
@@ -95,12 +101,19 @@ func NewTINKContext(parent context.Context, val *TINKConfig) (context.Context, e
 	//  for now, only use the primary key
 	for _, k := range val.Key.KeysetInfo().GetKeyInfo() {
 		if val.Key.KeysetInfo().PrimaryKeyId == k.KeyId {
+			if val.KeyID == "" {
+				val.KeyID = fmt.Sprint(k.KeyId)
+			}
+
+			if k.Status != tinkpb.KeyStatusType_ENABLED {
+				return nil, fmt.Errorf("key is not ENABLED %d", k.KeyId)
+			}
 			// look for the primary key in the keyset
 			if k.OutputPrefixType != tinkpb.OutputPrefixType_RAW && k.OutputPrefixType != tinkpb.OutputPrefixType_TINK {
 				return nil, fmt.Errorf("outputPrefix type must be either RAW or TINK; got %v", k.OutputPrefixType)
 			}
 			switch k.TypeUrl {
-			case rsaPKCS1PrivateKeyTypeURL:
+			case rsaPKCS1PrivateKeyTypeURL, rsaPSSPrivateKeyTypeURL:
 
 				publicKeyHandle, err := val.Key.Public()
 				if err != nil {
@@ -124,20 +137,36 @@ func NewTINKContext(parent context.Context, val *TINKConfig) (context.Context, e
 					if kk.KeyId == val.Key.KeysetInfo().PrimaryKeyId {
 						kserialized := kk.KeyData.Value
 
-						key := &rsppb.RsaSsaPkcs1PublicKey{}
-						if err := proto.Unmarshal(kserialized, key); err != nil {
-							return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+						if k.TypeUrl == rsaPKCS1PrivateKeyTypeURL {
+							key := &rsppb.RsaSsaPkcs1PublicKey{}
+							if err := proto.Unmarshal(kserialized, key); err != nil {
+								return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+							}
+
+							pubKey := &rsa.PublicKey{
+								E: int(bytesToBigInt(key.GetE()).Int64()),
+								N: bytesToBigInt(key.GetN()),
+							}
+							val.publicKeyFromTINK = pubKey
+						} else if k.TypeUrl == rsaPSSPrivateKeyTypeURL {
+							key := &rspsspb.RsaSsaPssPublicKey{}
+							if err := proto.Unmarshal(kserialized, key); err != nil {
+								return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+							}
+
+							pubKey := &rsa.PublicKey{
+								E: int(bytesToBigInt(key.GetE()).Int64()),
+								N: bytesToBigInt(key.GetN()),
+							}
+							val.publicKeyFromTINK = pubKey
+						} else {
+							return nil, fmt.Errorf("error: unknown private key type")
 						}
 
-						pubKey := &rsa.PublicKey{
-							E: int(bytesToBigInt(key.GetE()).Int64()),
-							N: bytesToBigInt(key.GetN()),
-						}
-						val.publicKeyFromTINK = pubKey
 					}
 				}
 
-			case rsaSSAPKCS1VerifierTypeURL:
+			case rsaSSAPKCS1VerifierTypeURL, rsaPSSPKCS1VerifierTypeURL:
 
 				bbw := new(bytes.Buffer)
 				bw := keyset.NewBinaryWriter(bbw)
@@ -156,17 +185,33 @@ func NewTINKContext(parent context.Context, val *TINKConfig) (context.Context, e
 				for _, kk := range tpb.Key {
 					if kk.KeyId == val.Key.KeysetInfo().PrimaryKeyId {
 						kserialized := kk.KeyData.Value
+						if k.TypeUrl == rsaSSAPKCS1VerifierTypeURL {
+							key := &rsppb.RsaSsaPkcs1PublicKey{}
+							if err := proto.Unmarshal(kserialized, key); err != nil {
+								return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+							}
 
-						key := &rsppb.RsaSsaPkcs1PublicKey{}
-						if err := proto.Unmarshal(kserialized, key); err != nil {
-							return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+							pubKey := &rsa.PublicKey{
+								E: int(bytesToBigInt(key.GetE()).Int64()),
+								N: bytesToBigInt(key.GetN()),
+							}
+							val.publicKeyFromTINK = pubKey
+						} else if k.TypeUrl == rsaPSSPKCS1VerifierTypeURL {
+							key := &rspsspb.RsaSsaPssPublicKey{}
+							if err := proto.Unmarshal(kserialized, key); err != nil {
+								return nil, fmt.Errorf("could not write unmarshall publicKey %v", err)
+							}
+
+							pubKey := &rsa.PublicKey{
+								E: int(bytesToBigInt(key.GetE()).Int64()),
+								N: bytesToBigInt(key.GetN()),
+							}
+							val.publicKeyFromTINK = pubKey
+
+						} else {
+							return nil, fmt.Errorf("error: unknown public key type")
 						}
 
-						pubKey := &rsa.PublicKey{
-							E: int(bytesToBigInt(key.GetE()).Int64()),
-							N: bytesToBigInt(key.GetN()),
-						}
-						val.publicKeyFromTINK = pubKey
 					}
 				}
 
@@ -274,6 +319,16 @@ func init() {
 		return SigningMethodTINKRS256
 	})
 
+	// PS256
+	SigningMethodTINKPS256 = &SigningMethodTINK{
+		"TINKPS256",
+		jwt.SigningMethodPS256,
+		crypto.SHA256,
+	}
+	jwt.RegisterSigningMethod(SigningMethodTINKPS256.Alg(), func() jwt.SigningMethod {
+		return SigningMethodTINKPS256
+	})
+
 	// ES256
 	SigningMethodTINKES256 = &SigningMethodTINK{
 		"TINKES256",
@@ -336,7 +391,7 @@ func (s *SigningMethodTINK) Sign(signingString string, key interface{}) ([]byte,
 			}
 
 			switch k.TypeUrl {
-			case rsaPKCS1PrivateKeyTypeURL:
+			case rsaPKCS1PrivateKeyTypeURL, rsaPSSPrivateKeyTypeURL:
 				return ss, err
 			case ecdsaPrivateKeyTypeURL:
 				publicKeyHandle, err := config.Key.Public()

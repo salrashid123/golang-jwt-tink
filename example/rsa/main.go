@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
@@ -22,6 +23,7 @@ var (
 	pubK  = flag.String("pubK", "pub.json", "Tink PublicKey")
 	privK = flag.String("privK", "priv.json", "Tink PrivateKey")
 	keyID = flag.Uint("keyID", 0, "Tink PrivateKey")
+	mode  = flag.String("mode", "rsa", "test rsa or rsapss")
 )
 
 func main() {
@@ -42,16 +44,37 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// list all the keyID in this keyset
+
+	log.Printf("private keyset default primary keyID: %d\n", privateKeyHandle.KeysetInfo().PrimaryKeyId)
+	for _, k := range privateKeyHandle.KeysetInfo().KeyInfo {
+		log.Printf("private keyset contains keyID: %d with status %s\n", k.KeyId, k.Status)
+	}
+	// note, we are setting the provided keyid to the primarykey
+	//  do not persist this keyset or reuse it since the keyid has changed
 	prMgr := keyset.NewManagerFromHandle(privateKeyHandle)
-	prMgr.SetPrimary(uint32(*keyID))
+	if *keyID != 0 {
+		err = prMgr.SetPrimary(uint32(*keyID))
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	claims := &jwt.RegisteredClaims{
 		ExpiresAt: &jwt.NumericDate{time.Now().Add(time.Minute * 1)},
 		Issuer:    "test",
 	}
 
-	tinkjwt.SigningMethodTINKRS256.Override()
-	token := jwt.NewWithClaims(tinkjwt.SigningMethodTINKRS256, claims)
+	var token *jwt.Token
+
+	if *mode == "rsapss" {
+		tinkjwt.SigningMethodTINKPS256.Override()
+		token = jwt.NewWithClaims(tinkjwt.SigningMethodTINKPS256, claims)
+	} else {
+		tinkjwt.SigningMethodTINKRS256.Override()
+		token = jwt.NewWithClaims(tinkjwt.SigningMethodTINKRS256, claims)
+
+	}
 
 	config := &tinkjwt.TINKConfig{
 		Key: privateKeyHandle,
@@ -79,8 +102,8 @@ func main() {
 	)
 	log.Printf("RSA PublicKey: \n%s\n", string(pubkey_pem))
 
-	// optionally set a keyID
-	//token.Header["kid"] = config.GetKeyID()
+	// set a keyID
+	token.Header["kid"] = config.GetKeyID()
 
 	tokenString, err := token.SignedString(keyctx)
 	if err != nil {
@@ -94,6 +117,7 @@ func main() {
 		log.Fatalf("could not get keyFunc: %v", err)
 	}
 
+	// if you just want to parse the token but not verify (eg to extract the keyid), supply nil as keyFunc
 	vtoken, err := jwt.Parse(tokenString, keyFunc)
 	if err != nil {
 		log.Fatalf("Error verifying token %v", err)
@@ -102,6 +126,8 @@ func main() {
 		log.Println("     verified with TINK PublicKey")
 	}
 
+	kidFromToken := vtoken.Header["kid"]
+	log.Printf("     using KeyID: %s\n", kidFromToken)
 	// verify with provided RSAPublic key
 	pubKeyr := config.GetPublicKey()
 
@@ -127,9 +153,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	puMgr := keyset.NewManagerFromHandle(publicKeyHandle)
-	puMgr.SetPrimary(uint32(*keyID))
+	log.Printf("public keyset default primary keyID: %d\n", publicKeyHandle.KeysetInfo().PrimaryKeyId)
+	for _, k := range publicKeyHandle.KeysetInfo().KeyInfo {
+		log.Printf("public keyset contains keyID: %d with status %s\n", k.KeyId, k.Status)
+	}
 
+	ukid, err := strconv.Atoi(kidFromToken.(string))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	puMgr := keyset.NewManagerFromHandle(publicKeyHandle)
+	if *keyID != 0 {
+		err = puMgr.SetPrimary(uint32(ukid))
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 	configP := &tinkjwt.TINKConfig{
 		Key: publicKeyHandle,
 	}

@@ -13,25 +13,15 @@ Note: Tink already has support for JWT signature and verification using its buil
 The following types are supported
 
 * `RS256`
+* `PS256`
 * `ES256`
 
 ### Supported TINK Key Types:
 
-Currently only the PrimaryKeyID is used for signing and verification.
+Currently only the PrimaryKeyID is used for signing and verification which means if you pass a keyset handle in, and the JWT to issue or verify is not the primary one, you need to rotate the keyID as primary.
 
 The Tink Key you use for signing should use the TINK or RAW prefix mode (`"outputPrefixType": "RAW"`, `"outputPrefixType": "TINK"`) as shown in the example.
 
-The example in this repo uses the following templates:
-
-* `signature.RSA_SSA_PKCS1_3072_SHA256_F4_RAW_Key_Template()`
-* `signature.ECDSAP256KeyWithoutPrefixTemplate()`
-
-but you can also use
-
-  * `signature.RSA_SSA_PKCS1_3072_SHA256_F4_Key_Template()`
-  * `signature.ECDSAP256KeyTemplate()`
-
-for EC keys, only DER output format  (`EcdsaSignatureEncoding_DER`) is supported though a TODO is to also support `signature.ECDSAP256RawKeyTemplate()` 
 
 Additional JWT signing library:
 
@@ -206,6 +196,7 @@ These keys were created using the following [tinkey](https://developers.google.c
 ```bash
 $ tinkey list-key-templates
 
+## RSA
 $ tinkey create-keyset --key-template=RSA_SSA_PKCS1_3072_SHA256_F4 --out-format=json --out=keyset/rsa_1_privatekey_keyset.json
 $ tinkey create-public-keyset --in=keyset/rsa_1_privatekey_keyset.json --out-format=json --out=keyset/rsa_1_public_keyset.json
 
