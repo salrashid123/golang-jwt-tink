@@ -197,6 +197,7 @@ These keys were created using the following [tinkey](https://developers.google.c
 $ tinkey list-key-templates
 
 ## RSA
+### create a keyset with two keys
 $ tinkey create-keyset --key-template=RSA_SSA_PKCS1_3072_SHA256_F4 --out-format=json --out=keyset/rsa_1_privatekey_keyset.json
 $ tinkey create-public-keyset --in=keyset/rsa_1_privatekey_keyset.json --out-format=json --out=keyset/rsa_1_public_keyset.json
 
@@ -258,6 +259,10 @@ key_info {
   key_id: 123569881
   output_prefix_type: TINK
 }
+
+### RSAPSS
+
+$ tinkey create-keyset --key-template=RSA_SSA_PSS_3072_SHA256_F4 --out-format=json --out=keyset/rsa_pss_privatekey_keyset.json
 
 ### ECC
 
